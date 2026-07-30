@@ -1,10 +1,9 @@
-```markdown
+
 ![Python Version](https://img.shields.io/badge/python-3.6+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-```
 
-```markdown
+
 # 🔍 PathTracer - Terminal
 
 Un potente buscador de archivos y carpetas para la terminal, escrito en Python. Permite realizar búsquedas rápidas y eficientes en el sistema de archivos con múltiples opciones de filtrado.
