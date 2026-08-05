@@ -11,11 +11,12 @@
 ## 📸 Capturas de pantalla
 
 ### Versión Terminal
-![[Captura de pantalla_20260805_125955.png]]
+
+![Terminal Version](img/Captura%20de%20pantalla_20260805_125955.png)
 
 
 ### Versión Tkinter (GUI)
-![[Captura de pantalla_20260805_130054.png]]
+![Tkinter Version](img/Captura%20de%20pantalla_20260805_130054.png)
 
 ## ✨ Características
 
