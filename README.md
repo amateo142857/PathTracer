@@ -2,51 +2,92 @@
 ![Python Version](https://img.shields.io/badge/python-3.6+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![Tkinter](https://img.shields.io/badge/Tkinter-GUI-orange.svg)
+
+# 🔍 PathTracer
+
+**PathTracer** es un potente buscador de archivos y carpetas con dos versiones: una para terminal y otra con interfaz gráfica (Tkinter). Permite realizar búsquedas rápidas y eficientes en el sistema de archivos con múltiples opciones de filtrado.
+
+## 📸 Capturas de pantalla
+
+### Versión Terminal
+![[Captura de pantalla_20260805_125955.png]]
 
 
-# 🔍 PathTracer - Terminal
-
-Un potente buscador de archivos y carpetas para la terminal, escrito en Python. Permite realizar búsquedas rápidas y eficientes en el sistema de archivos con múltiples opciones de filtrado.
+### Versión Tkinter (GUI)
+![[Captura de pantalla_20260805_130054.png]]
 
 ## ✨ Características
 
-- 🔍 **Búsqueda por nombre** - Encuentra archivos y carpetas por coincidencia de texto
-- 📄 **Búsqueda por extensión** - Filtra archivos por su extensión (.txt, .mp4, .pdf, etc.)
-- 🎯 **Búsqueda con comodines** - Usa `*` y `?` para búsquedas avanzadas
-- 📁 **Búsqueda específica** - Busca solo carpetas o solo archivos
-- 📊 **Límite de resultados** - Controla el número máximo de resultados
-- ⏱️ **Estadísticas de tiempo** - Muestra el tiempo de ejecución de cada búsqueda
-- 🎨 **Interfaz amigable** - Emojis y colores para mejor legibilidad
-- 🔄 **Multiplataforma** - Funciona en Windows, Linux y macOS
+### 🔍 **Búsqueda avanzada**
+- Búsqueda por nombre
+- Búsqueda por extensión (.txt, .mp4, .pdf, etc.)
+- Búsqueda con comodines (`*` y `?`)
+- Búsqueda específica (solo archivos o solo carpetas)
+- Límite de resultados configurable
+
+### 🎨 **Versión Terminal**
+- Interfaz amigable con emojis y colores
+- Estadísticas de tiempo de ejecución
+- Menú interactivo
+- Multiplataforma
+
+### 🖱️ **Versión Tkinter (GUI)**
+- **Interfaz moderna y personalizable** con temas oscuros
+- **Resultados interactivos** con botones para cada archivo/carpeta:
+  - ▶ Abrir: Abre el archivo/carpeta con su programa predeterminado
+  - 📂 Carpeta: Abre la carpeta contenedora del archivo
+  - 📋 Copiar: Copia la ruta al portapapeles
+  - ℹ️ Info: Muestra información detallada
+- **Tooltips** al pasar el mouse sobre los resultados
+- **Scroll automático** para muchos resultados
+- **Búsqueda en segundo plano** (no bloquea la interfaz)
+- **Botón para detener** la búsqueda en cualquier momento
+- **Atajos de teclado** (Ctrl+F para enfocar búsqueda)
+- **Totalmente personalizable** (colores, fuentes, etc.)
 
 ## 📦 Requisitos
 
+### Para ambas versiones:
 - Python 3.6 o superior
-- No requiere dependencias externas (solo módulos estándar)
+
+### Para la versión GUI (Tkinter):
+- Tkinter (incluido por defecto en Python)
+- PIL/Pillow (opcional, para iconos)
+
+```bash
+# Instalar dependencias opcionales
+pip install Pillow
+```
 
 ## 🚀 Instalación
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/tu-usuario/buscador-archivos-terminal.git
+git clone https://github.com/amateo142857/PathTracer.git
 
 # Entrar al directorio
-cd buscador-archivos-terminal
+cd PathTracer
 
 # Dar permisos de ejecución (Linux/macOS)
-chmod +x buscador.py
+chmod +x path_tracer_terminal.py path_tracer_tkinter.py
 ```
 
 ## 💻 Uso
 
-### Ejecutar el programa
-
+### Versión Terminal
 ```bash
-python buscador.py
+python path_tracer_terminal.py
 ```
 
-### Menú principal
+### Versión Tkinter (GUI)
+```bash
+python path_tracer_tkinter.py
+```
 
+## 📖 Guía de uso
+
+### Menú principal (Terminal)
 ```
 ============================================================
   🔍 BUSCADOR DE ARCHIVOS - VERSIÓN TERMINAL
@@ -60,43 +101,83 @@ python buscador.py
 ============================================================
 ```
 
+### Interfaz Tkinter
+
+#### Campo de búsqueda
+- Escribe el nombre del archivo o carpeta
+- Presiona Enter o haz clic en "Buscar"
+- Usa Ctrl+F para enfocar el campo de búsqueda
+
+#### Opciones de búsqueda
+- **Tipo**: Archivos y carpetas, Solo archivos, Solo carpetas
+- **Directorio**: Carpeta donde iniciar la búsqueda
+- **Máx resultados**: Límite de resultados (dejar vacío = sin límite)
+
+#### Resultados
+Cada resultado muestra:
+- **Nombre del archivo/carpeta** (no la ruta completa)
+- **Tooltip** con la ruta completa al pasar el mouse
+- **Botones de acción**:
+  - 🚀 Abrir: Abre el elemento
+  - 📂 Carpeta: Abre la carpeta contenedora
+  - 📋 Copiar: Copia la ruta al portapapeles
+  - ℹ️ Info: Muestra información detallada
+
 ### Ejemplos de uso
 
-#### 1. Buscar por nombre
-```
-📂 Directorio de búsqueda (Enter para actual): /home/usuario/Documentos
+#### Buscar por nombre
+```bash
+📂 Directorio de búsqueda: /home/usuario/Documentos
 🔍 Patrón de búsqueda: proyecto
-📊 Máximo resultados (Enter para sin límite): 10
+📊 Máximo resultados: 10
 ```
 
-#### 2. Buscar por extensión
-```
-📂 Directorio de búsqueda (Enter para actual): .
-🔍 Extensión (ej: .txt, .mp4): .pdf
-```
-
-#### 3. Buscar con comodines
-```
-📂 Directorio de búsqueda (Enter para actual): .
-🔍 Patrón (ej: *.txt, *proyecto*): *foto*.jpg
-📌 Tipo (archivos/carpetas/ambos): archivos
+#### Buscar por extensión
+```bash
+📂 Directorio: .
+🔍 Extensión: .pdf
 ```
 
-#### 4. Buscar carpetas
-```
-📂 Directorio de búsqueda (Enter para actual): .
-🔍 Nombre de carpeta: python
+#### Buscar con comodines
+```bash
+📂 Directorio: .
+🔍 Patrón: *foto*.jpg
+📌 Tipo: archivos
 ```
 
-#### 5. Buscar archivos
+## 🎨 Personalización
+
+### Colores (Versión Tkinter)
+
+Puedes personalizar los colores editando las variables al inicio de `buscador_tkinter.py`:
+
+```python
+# Tema Oscuro (por defecto)
+COLOR_VENTANA = "#1e1e1e"
+COLOR_FRAMES = "#2d2d2d"
+COLOR_TEXTO = "#ffffff"
+COLOR_BOTON_BG = "#4CAF50"
+
+# Tema Claro
+COLOR_VENTANA = "#f5f5f5"
+COLOR_FRAMES = "#ffffff"
+COLOR_TEXTO = "#333333"
+COLOR_BOTON_BG = "#2196F3"
 ```
-📂 Directorio de búsqueda (Enter para actual): .
-🔍 Nombre de archivo: informe
-📊 Máximo resultados (Enter para sin límite): 20
-```
+
+### Paletas predefinidas
+
+| Tema | Fondo | Frames | Texto | Botones |
+|------|-------|--------|-------|---------|
+| Oscuro | #1e1e1e | #2d2d2d | #ffffff | #4CAF50 |
+| Claro | #f5f5f5 | #ffffff | #333333 | #2196F3 |
+| Azul | #0a192f | #172a45 | #e6f1ff | #64ffda |
+| Rosa | #2d1b69 | #4a2d8c | #ffffff | #ff6bcd |
+| Retro | #000000 | #0a0a0a | #00ff00 | #003300 |
 
 ## 📊 Ejemplo de salida
 
+### Terminal
 ```
 ============================================================
 🔍 BUSCANDO: 'proyecto'
@@ -118,27 +199,27 @@ python buscador.py
 ============================================================
 ```
 
+### GUI
+```
+📄 proyecto_final.pdf    [🚀 Abrir] [📂 Carpeta] [📋 Copiar] [ℹ️ Info]
+📄 proyecto_ideas.txt     [🚀 Abrir] [📂 Carpeta] [📋 Copiar] [ℹ️ Info]
+📁 Proyectos              [🚀 Abrir] [📂 Carpeta] [📋 Copiar] [ℹ️ Info]
+📁 Proyectos/2024         [🚀 Abrir] [📂 Carpeta] [📋 Copiar] [ℹ️ Info]
+```
+
 ## 🛠️ Funciones principales
 
-| Función | Descripción |
-|---------|-------------|
-| `buscar_completo()` | Búsqueda completa con opciones de filtrado |
-| `buscar_por_extension()` | Busca archivos por extensión específica |
-| `buscar_con_comodines()` | Búsqueda con comodines (*, ?) |
-| `buscar_carpetas_por_nombre()` | Busca carpetas por coincidencia en el nombre |
-| `buscar_archivos_por_nombre()` | Busca archivos por coincidencia en el nombre |
-| `limpiar_pantalla()` | Limpia la terminal (multiplataforma) |
-
-## 🔧 Personalización
-
-### Cambiar directorio por defecto
-
-Modifica la variable en la función `buscar_por_nombre()`:
-```python
-directorio = input("📂 Directorio de búsqueda (Enter para actual): ").strip()
-if not directorio:
-    directorio = '/ruta/personalizada'  # Cambia aquí
-```
+| Función | Descripción | Versión |
+|---------|-------------|---------|
+| `buscar_completo()` | Búsqueda completa con filtros | Ambas |
+| `buscar_por_extension()` | Búsqueda por extensión | Ambas |
+| `buscar_con_comodines()` | Búsqueda con comodines | Ambas |
+| `buscar_carpetas_por_nombre()` | Búsqueda de carpetas | Ambas |
+| `buscar_archivos_por_nombre()` | Búsqueda de archivos | Ambas |
+| `abrir_archivo()` | Abrir archivo/carpeta | GUI |
+| `abrir_carpeta_contenedora()` | Abrir carpeta contenedora | GUI |
+| `copiar_ruta_al_portapapeles()` | Copiar ruta al portapapeles | GUI |
+| `mostrar_info()` | Mostrar información detallada | GUI |
 
 ## 🐛 Solución de problemas
 
@@ -148,21 +229,77 @@ if not directorio:
 sudo python buscador.py
 ```
 
-### Error: "El directorio no existe"
-- Verifica que la ruta ingresada sea correcta
-- Usa rutas absolutas o relativas válidas
+### Error: Tkinter no encontrado
+```bash
+# Ubuntu/Debian
+sudo apt-get install python3-tk
+
+# Fedora
+sudo dnf install python3-tkinter
+
+# Arch Linux
+sudo pacman -S tk
+```
+
+### Error: "xdg-open: not found" (Linux)
+```bash
+# Instalar xdg-utils
+sudo apt install xdg-utils  # Ubuntu/Debian
+sudo dnf install xdg-utils  # Fedora
+```
 
 ### La búsqueda es muy lenta
 - Limita los resultados con la opción de máximo resultados
 - Busca en directorios más específicos
+- Usa la versión GUI con búsqueda en segundo plano
 
-## 📝 Contribuir
+### El programa no abre archivos en KDE/Dolphin
+```bash
+# Verificar que Dolphin esté instalado
+which dolphin
+
+# Instalar Dolphin si es necesario
+sudo apt install dolphin  # Ubuntu/Debian
+```
+
+## 📁 Estructura del proyecto
+
+```
+PathTracer/
+├── path_tracer_terminal.py  # Versión Terminal
+├── path_tracer_tkinter.py   # Versión GUI
+├── README.md                # Este archivo
+├── LICENSE                  # Licencia MIT
+└── img/                     # Iconos
+    └── icono1.png
+    └──terminal.png
+    └── gui.png
+```
+
+## 🔄 Actualizaciones futuras
+
+- [ ] Búsqueda por contenido de archivos
+- [ ] Búsqueda por tamaño
+- [ ] Búsqueda por fecha de modificación
+- [ ] Modo oscuro/claro automático
+- [ ] Guardar historial de búsquedas
+- [ ] Exportar resultados a CSV/JSON
+- [ ] Vista previa de archivos
+
+## 🤝 Contribuir
 
 1. Haz un Fork del proyecto
 2. Crea tu rama de características (`git checkout -b feature/AmazingFeature`)
 3. Commit de tus cambios (`git commit -m 'Add some AmazingFeature'`)
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
+
+### Áreas de contribución
+- Mejoras en la interfaz GUI
+- Nuevas funcionalidades de búsqueda
+- Optimización de rendimiento
+- Soporte para más plataformas
+- Documentación y ejemplos
 
 ## 📄 Licencia
 
@@ -177,20 +314,21 @@ Este proyecto está bajo la Licencia MIT - mira el archivo [LICENSE](LICENSE) pa
 
 - Módulo `os` de Python por las funciones de sistema de archivos
 - Módulo `fnmatch` por el soporte de comodines
+- Tkinter por la interfaz gráfica
 - Comunidad de Python por las herramientas estándar
 
 ## 📌 Notas adicionales
 
 - El programa es **multiplataforma** (Windows, Linux, macOS)
-- No requiere instalación de dependencias externas
-- Usa solo módulos de la biblioteca estándar de Python
-- Ideal para búsquedas rápidas en entornos sin interfaz gráfica
+- La versión Terminal usa solo módulos estándar de Python
+- La versión GUI usa Tkinter (incluido con Python)
+- Ideal para búsquedas rápidas en cualquier entorno
 
 ---
 
 ⭐ **Si te gusta este proyecto, no olvides darle una estrella en GitHub!**
-```
 
+## 📞 Contacto
 
-
+¿Tienes preguntas o sugerencias? Abre un [Issue](https://github.com/amateo142857/PathTracer/issues) o contáctame en GitHub.
 
