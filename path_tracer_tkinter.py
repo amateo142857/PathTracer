@@ -37,6 +37,112 @@ COLOR_ENTRY_SELECT = "#4CAF50"     # Selección en campos
 # --- Colores de scrollbar ---
 COLOR_SCROLLBAR = "#4CAF50"        # Color de la scrollbar
 
+
+# ============ ICONOS POR TIPO DE ARCHIVO ============
+
+# Mapa de extensiones -> (icono, color)
+# Puedes agregar/quitar los que quieras fácilmente
+TIPOS_ARCHIVO = {
+    # Video
+    'video': {
+        'ext': ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm',
+                '.mpeg', '.mpg', '.m4v', '.3gp', '.ts', '.vob', '.rmvb'],
+        'icono': '🎬',
+        'color': '#FF7043'   # naranja
+    },
+    # Audio
+    'audio': {
+        'ext': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',
+                '.opus', '.aiff', '.mid', '.midi'],
+        'icono': '🎵',
+        'color': '#AB47BC'   # morado
+    },
+    # Imágenes
+    'imagen': {
+        'ext': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif',
+                '.webp', '.svg', '.ico', '.raw', '.heic'],
+        'icono': '🖼️',
+        'color': '#42A5F5'   # azul
+    },
+    # Documentos
+    'documento': {
+        'ext': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.md',
+                '.tex', '.pages'],
+        'icono': '📄',
+        'color': '#66BB6A'   # verde
+    },
+    # Hojas de cálculo
+    'hoja_calculo': {
+        'ext': ['.xls', '.xlsx', '.csv', '.ods', '.numbers'],
+        'icono': '📊',
+        'color': '#26A69A'   # teal
+    },
+    # Presentaciones
+    'presentacion': {
+        'ext': ['.ppt', '.pptx', '.odp', '.key'],
+        'icono': '📽️',
+        'color': '#EF5350'   # rojo
+    },
+    # Comprimidos
+    'comprimido': {
+        'ext': ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz',
+                '.iso', '.cab'],
+        'icono': '🗜️',
+        'color': '#FFA726'   # naranja claro
+    },
+    # Código / scripts
+    'codigo': {
+        'ext': ['.py', '.js', '.ts', '.java', '.c', '.cpp', '.h', '.hpp',
+                '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt',
+                '.html', '.css', '.scss', '.sql', '.sh', '.bat', '.ps1',
+                '.json', '.xml', '.yaml', '.yml', '.ini', '.cfg'],
+        'icono': '💻',
+        'color': '#29B6F6'   # celeste
+    },
+    # Ejecutables
+    'ejecutable': {
+        'ext': ['.exe', '.msi', '.app', '.apk', '.deb', '.rpm', '.dmg',
+                '.bin', '.run'],
+        'icono': '⚙️',
+        'color': '#8D6E63'   # marrón
+    },
+    # Fuentes
+    'fuente': {
+        'ext': ['.ttf', '.otf', '.woff', '.woff2', '.eot'],
+        'icono': '🔤',
+        'color': '#EC407A'   # rosa
+    },
+    # Bases de datos
+    'base_datos': {
+        'ext': ['.db', '.sqlite', '.sqlite3', '.mdb', '.accdb'],
+        'icono': '🗄️',
+        'color': '#78909C'   # gris azulado
+    },
+    # Diseño / 3D
+    'diseno': {
+        'ext': ['.psd', '.ai', '.xd', '.fig', '.sketch', '.blend',
+                '.obj', '.fbx', '.stl', '.3ds'],
+        'icono': '🎨',
+        'color': '#FFCA28'   # amarillo
+    },
+}
+
+
+def obtener_icono_y_color(ruta, es_archivo):
+    """Devuelve (icono, color) según el tipo de archivo o carpeta."""
+    if not es_archivo:
+        return '📁', COLOR_CARPETA
+
+    ext = os.path.splitext(ruta)[1].lower()
+    for tipo, datos in TIPOS_ARCHIVO.items():
+        if ext in datos['ext']:
+            return datos['icono'], datos['color']
+
+    # Si no coincide con ninguno, icono genérico
+    return '📄', COLOR_ARCHIVO
+
+
+
 # ============ FUNCIONES DEL BUSCADOR ============
 
 def buscar_completo(directorio, patron, tipo="ambos", max_resultados=None):
@@ -274,13 +380,8 @@ def mostrar_resultado(ruta, es_archivo):
                         highlightthickness=1)
     item_frame.pack(fill=tk.X, pady=2, padx=5)
     
-    # Color según tipo
-    if es_archivo:
-        color = COLOR_ARCHIVO
-        icono = "📄"
-    else:
-        color = COLOR_CARPETA
-        icono = "📁"
+    # Color e icono según tipo de archivo
+    icono, color = obtener_icono_y_color(ruta, es_archivo)
     
     # Mostrar SOLO el nombre del archivo/carpeta (no la ruta completa)
     label_texto = tk.Label(item_frame, 
