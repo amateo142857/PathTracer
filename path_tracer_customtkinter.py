@@ -30,6 +30,33 @@ COLOR_MORADO         = "#cba6f7"   # morado pastel
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+# ============ CONSTANTES ============
+
+# Carpetas que se ignoran al buscar (útil sobre todo en Windows y Linux)
+CARPETAS_EXCLUIDAS = {
+    # Sistema Windows
+    "Windows", "System32", "SysWOW64", "WinSxS",
+    "$Recycle.Bin", "$RECYCLE.BIN",
+    "System Volume Information",
+    "Recovery", "PerfLogs",
+    "ProgramData",
+    # Cachés y configuraciones de usuario
+    "AppData", "Application Data", "Local Settings",
+    "Temporary Internet Files", "Cache", "Caches",
+    # Desarrollo
+    "node_modules", ".git", ".svn", ".hg",
+    "__pycache__", ".venv", "venv", ".env",
+    "dist", "build", ".next", ".nuxt",
+    # Editores
+    ".vscode", ".idea", ".vs",
+    # macOS / Linux
+    ".Trash", ".Trashes", "lost+found",
+    "proc", "sys", "dev", "run",
+    # Linux extra (para que buscar en / no sea eterno)
+    "snap", "flatpak", "docker", "containers",
+    "var/cache", "var/lib/docker", "var/lib/snapd",
+}
+
 # ============ ICONOS POR TIPO DE ARCHIVO ============
 
 TIPOS_ARCHIVO = {
@@ -117,6 +144,48 @@ def obtener_icono_y_color(ruta, es_archivo):
     return '📄', COLOR_TEXTO
 
 
+# ============ UTILIDADES DE SISTEMA ============
+
+def obtener_unidades():
+    """Devuelve una lista con las raíces de todas las unidades disponibles."""
+    unidades = []
+
+    if platform.system() == "Windows":
+        for letra in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            raiz = f"{letra}:\\"
+            if os.path.exists(raiz):
+                unidades.append(raiz)
+    else:
+        unidades.append("/")
+        for base in ("/Volumes", "/media", "/mnt"):
+            if os.path.isdir(base):
+                try:
+                    for sub in os.listdir(base):
+                        ruta = os.path.join(base, sub)
+                        if os.path.isdir(ruta):
+                            unidades.append(ruta)
+                except PermissionError:
+                    pass
+
+    return unidades
+
+
+def walk_seguro(directorio):
+    """
+    os.walk robusto: ignora errores de permisos y filtra carpetas
+    excluidas (Windows, caches, etc.).
+    """
+    def _on_error(_err):
+        pass
+
+    for root, dirs, files in os.walk(directorio, onerror=_on_error):
+        dirs[:] = [
+            d for d in dirs
+            if d not in CARPETAS_EXCLUIDAS and not d.startswith('$')
+        ]
+        yield root, dirs, files
+
+
 # ============ FUNCIONES DEL BUSCADOR ============
 
 def buscar_completo(directorio, patron, tipo="ambos", max_resultados=None):
@@ -124,7 +193,7 @@ def buscar_completo(directorio, patron, tipo="ambos", max_resultados=None):
     contador = 0
     inicio = time.time()
 
-    for root, dirs, files in os.walk(directorio):
+    for root, dirs, files in walk_seguro(directorio):
         if max_resultados and contador >= max_resultados:
             break
 
@@ -152,41 +221,43 @@ def buscar_completo(directorio, patron, tipo="ambos", max_resultados=None):
     return resultados, fin - inicio
 
 
-def buscar_con_comodines(directorio, patron, tipo="ambos"):
+def buscar_con_comodines(directorio, patron, tipo="ambos", max_resultados=None):
     resultados = []
-    for root, dirs, files in os.walk(directorio):
+    for root, dirs, files in walk_seguro(directorio):
         if tipo in ["archivos", "ambos"]:
             for archivo in files:
                 if fnmatch.fnmatch(archivo.lower(), patron.lower()):
                     resultados.append(os.path.join(root, archivo))
+                    if max_resultados and len(resultados) >= max_resultados:
+                        return resultados
         if tipo in ["carpetas", "ambos"]:
             for carpeta in dirs:
                 if fnmatch.fnmatch(carpeta.lower(), patron.lower()):
                     resultados.append(os.path.join(root, carpeta))
+                    if max_resultados and len(resultados) >= max_resultados:
+                        return resultados
     return resultados
 
 
-def buscar_carpetas_por_nombre(directorio, patron):
+def buscar_carpetas_por_nombre(directorio, patron, max_resultados=None):
     resultados = []
-    for root, dirs, _ in os.walk(directorio):
+    for root, dirs, _ in walk_seguro(directorio):
         for carpeta in dirs:
             if patron.lower() in carpeta.lower():
                 resultados.append(os.path.join(root, carpeta))
+                if max_resultados and len(resultados) >= max_resultados:
+                    return resultados
     return resultados
 
 
 def buscar_archivos_por_nombre(directorio, patron, max_resultados=None):
     resultados = []
-    contador = 0
-    for root, _, files in os.walk(directorio):
-        if max_resultados and contador >= max_resultados:
-            break
+    for root, _, files in walk_seguro(directorio):
         for archivo in files:
             if patron.lower() in archivo.lower():
                 resultados.append(os.path.join(root, archivo))
-                contador += 1
-                if max_resultados and contador >= max_resultados:
-                    break
+                if max_resultados and len(resultados) >= max_resultados:
+                    return resultados
     return resultados
 
 
@@ -224,7 +295,7 @@ def copiar_ruta_al_portapapeles(ruta):
     try:
         ventana.clipboard_clear()
         ventana.clipboard_append(ruta)
-        mostrar_toast(f"📋 Ruta copiada", COLOR_VERDE)
+        mostrar_toast("📋 Ruta copiada", COLOR_VERDE)
     except Exception as e:
         messagebox.showerror("Error", f"No se pudo copiar:\n{str(e)}")
 
@@ -247,6 +318,11 @@ canvas_resultados = None
 busqueda_activa = False
 toast_actual = None
 
+# Estado real: ¿el usuario quiere buscar en todos los discos?
+# Importante: NO lo derivamos del texto del entry, porque el entry
+# muestra un texto decorativo ("💽 Todos los discos (C:, D:)").
+modo_todos_discos = False
+
 
 # ============ UTILIDADES DE UI ============
 
@@ -264,7 +340,7 @@ def mostrar_toast(mensaje, color=COLOR_ACENTO):
     if toast_actual is not None:
         try:
             toast_actual.destroy()
-        except:
+        except Exception:
             pass
 
     toast = ctk.CTkToplevel(ventana)
@@ -294,7 +370,7 @@ def mostrar_toast(mensaje, color=COLOR_ACENTO):
 def _cerrar_toast(toast):
     try:
         toast.destroy()
-    except:
+    except Exception:
         pass
 
 
@@ -318,11 +394,41 @@ def on_canvas_configure(event):
 
 
 def seleccionar_directorio():
+    global modo_todos_discos
     directorio = filedialog.askdirectory(title="Seleccionar directorio de búsqueda")
     if directorio:
+        modo_todos_discos = False
         dir_busqueda.set(directorio)
         entry_dir.delete(0, "end")
         entry_dir.insert(0, directorio)
+
+
+def seleccionar_todos_los_discos():
+    """
+    Activa el modo 'Todos los discos'.
+    OJO: solo cambiamos el texto del entry, NO dir_busqueda.
+    El estado real vive en modo_todos_discos.
+    """
+    global modo_todos_discos
+    modo_todos_discos = True
+    unidades = obtener_unidades()
+    resumen = ", ".join(u.rstrip("\\/") or u for u in unidades)
+    entry_dir.delete(0, "end")
+    entry_dir.insert(0, f"💽 Todos los discos ({resumen})")
+    mostrar_toast(f"💽 Se buscará en: {resumen}", COLOR_MORADO)
+
+
+def _on_dir_escrito(event=None):
+    """
+    Si el usuario escribe manualmente en el campo de directorio,
+    desactivamos el modo 'todos los discos' y sincronizamos dir_busqueda.
+    """
+    global modo_todos_discos
+    teclas_ignoradas = {"Left", "Right", "Up", "Down", "Home", "End",
+                        "Shift_L", "Shift_R", "Control_L", "Control_R"}
+    if modo_todos_discos and event is not None and event.keysym not in teclas_ignoradas:
+        modo_todos_discos = False
+    dir_busqueda.set(entry_dir.get())
 
 
 def limpiar_resultados():
@@ -420,7 +526,7 @@ def mostrar_info(ruta):
         info += f"📅 Modificado: {time.ctime(os.path.getmtime(ruta))}\n"
         try:
             info += f"📊 Contenido: {len(os.listdir(ruta))} elementos\n"
-        except:
+        except Exception:
             info += "📊 Contenido: No accesible\n"
     messagebox.showinfo(f"Información: {nombre}", info)
 
@@ -428,7 +534,7 @@ def mostrar_info(ruta):
 # ============ BÚSQUEDA ============
 
 def iniciar_busqueda():
-    global busqueda_activa
+    global busqueda_activa, modo_todos_discos
     if busqueda_activa:
         return
 
@@ -437,10 +543,18 @@ def iniciar_busqueda():
         mostrar_toast("⚠️ Ingresa un término de búsqueda", COLOR_AMARILLO)
         return
 
-    directorio = dir_busqueda.get().strip()
-    if not os.path.exists(directorio):
-        mostrar_toast("❌ El directorio no existe", COLOR_ROJO)
-        return
+    # Decidimos según el ESTADO REAL, no según el texto del entry
+    if modo_todos_discos:
+        directorios = obtener_unidades()
+        if not directorios:
+            mostrar_toast("❌ No se detectaron discos", COLOR_ROJO)
+            return
+    else:
+        directorio = dir_busqueda.get().strip()
+        if not directorio or not os.path.exists(directorio):
+            mostrar_toast("❌ El directorio no existe", COLOR_ROJO)
+            return
+        directorios = [directorio]
 
     limpiar_resultados()
 
@@ -451,35 +565,55 @@ def iniciar_busqueda():
 
     tipo = tipo_busqueda.get()
     max_res = max_resultados_var.get().strip()
-    max_res = int(max_res) if max_res else None
+    max_res = int(max_res) if max_res.isdigit() else None
 
     busqueda_activa = True
     hilo = Thread(target=ejecutar_busqueda,
-                  args=(directorio, texto_buscar, tipo, max_res),
+                  args=(directorios, texto_buscar, tipo, max_res),
                   daemon=True)
     hilo.start()
 
 
-def ejecutar_busqueda(directorio, patron, tipo, max_resultados):
+def ejecutar_busqueda(directorios, patron, tipo, max_resultados):
     try:
         resultados = []
-        tiempo = 0
+        inicio = time.time()
 
-        if patron.startswith('*') or '?' in patron:
-            resultados = buscar_con_comodines(directorio, patron, tipo)
-        else:
-            if tipo == "archivos":
-                resultados = buscar_archivos_por_nombre(directorio, patron, max_resultados)
-            elif tipo == "carpetas":
-                resultados = buscar_carpetas_por_nombre(directorio, patron)
+        for directorio in directorios:
+            if not busqueda_activa:
+                break
+
+            restante = None
+            if max_resultados:
+                restante = max_resultados - len(resultados)
+                if restante <= 0:
+                    break
+
+            if patron.startswith('*') or '?' in patron:
+                parciales = buscar_con_comodines(
+                    directorio, patron, tipo, restante)
             else:
-                completos, tiempo = buscar_completo(directorio, patron, tipo, max_resultados)
-                resultados = completos['archivos'] + completos['carpetas']
+                if tipo == "archivos":
+                    parciales = buscar_archivos_por_nombre(
+                        directorio, patron, restante)
+                elif tipo == "carpetas":
+                    parciales = buscar_carpetas_por_nombre(
+                        directorio, patron, restante)
+                else:
+                    completos, _t = buscar_completo(
+                        directorio, patron, tipo, restante)
+                    parciales = completos['archivos'] + completos['carpetas']
 
-        if max_resultados and len(resultados) > max_resultados:
-            resultados = resultados[:max_resultados]
+            resultados.extend(parciales)
 
-        ventana.after(0, mostrar_resultados_en_gui, resultados, tiempo, patron)
+            if max_resultados and len(resultados) >= max_resultados:
+                resultados = resultados[:max_resultados]
+                break
+
+        tiempo_total = time.time() - inicio
+
+        ventana.after(0, mostrar_resultados_en_gui,
+                      resultados, tiempo_total, patron)
     except Exception as e:
         ventana.after(0, mostrar_error, str(e))
 
@@ -500,9 +634,10 @@ def mostrar_resultados_en_gui(resultados, tiempo, patron):
         if os.path.exists(ruta):
             if os.path.isfile(ruta):
                 archivos.append(ruta)
+                mostrar_resultado(ruta, True)
             else:
                 carpetas.append(ruta)
-            mostrar_resultado(ruta, os.path.isfile(ruta))
+                mostrar_resultado(ruta, False)
 
     label_estado.configure(
         text=f"✅ Completado en {tiempo:.2f} s",
@@ -549,7 +684,7 @@ def crear_interfaz():
         icono1 = Image.open("./img/icono1.png")
         icono_ventana = ImageTk.PhotoImage(icono1)
         ventana.iconphoto(False, icono_ventana)
-    except:
+    except Exception:
         pass
 
     # ---------- HEADER ----------
@@ -642,9 +777,10 @@ def crear_interfaz():
                  text_color=COLOR_TEXTO_SUAVE,
                  width=90, anchor="w").pack(side="left")
 
+    # OJO: SIN textvariable. El texto mostrado y el estado real van separados.
     dir_busqueda = tk.StringVar(value=os.path.expanduser("~"))
+
     entry_dir = ctk.CTkEntry(fila_dir,
-                             textvariable=dir_busqueda,
                              height=36,
                              corner_radius=10,
                              fg_color=COLOR_FONDO_3,
@@ -652,6 +788,8 @@ def crear_interfaz():
                              text_color=COLOR_TEXTO,
                              font=("Segoe UI", 12))
     entry_dir.pack(side="left", fill="x", expand=True, padx=(0, 8))
+    entry_dir.insert(0, os.path.expanduser("~"))
+    entry_dir.bind("<KeyRelease>", _on_dir_escrito)
 
     ctk.CTkButton(fila_dir,
                   text="📁 Examinar",
@@ -662,6 +800,16 @@ def crear_interfaz():
                   hover_color=COLOR_ACENTO_HOVER,
                   text_color="#1e1e2e",
                   font=("Segoe UI", 12, "bold")).pack(side="left")
+
+    ctk.CTkButton(fila_dir,
+                  text="💽 Todos los discos",
+                  command=seleccionar_todos_los_discos,
+                  width=150, height=36,
+                  corner_radius=10,
+                  fg_color=COLOR_MORADO,
+                  hover_color="#b18ef0",
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 12, "bold")).pack(side="left", padx=(8, 0))
 
     # Fila: Máx resultados
     fila_max = ctk.CTkFrame(opciones, fg_color="transparent")
@@ -684,7 +832,8 @@ def crear_interfaz():
                              placeholder_text="Sin límite")
     entry_max.pack(side="left", padx=(0, 10))
 
-    ctk.CTkLabel(fila_max, text="(vacío = sin límite)",
+    ctk.CTkLabel(fila_max,
+                 text="(vacío = sin límite · recomendado 1000 al buscar en todos los discos)",
                  font=("Segoe UI", 11),
                  text_color=COLOR_TEXTO_SUAVE).pack(side="left")
 
