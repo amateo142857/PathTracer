@@ -1,9 +1,11 @@
 import os
 import time
+import json
 import subprocess
 import fnmatch
 import platform
 import tkinter as tk
+from datetime import datetime, date
 from threading import Thread
 from tkinter import messagebox, filedialog
 from PIL import Image, ImageTk
@@ -29,6 +31,14 @@ COLOR_MORADO         = "#cba6f7"   # morado pastel
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+# ============ RUTAS DE PERSISTENCIA ============
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ARCHIVO_FAVORITOS = os.path.join(BASE_DIR, "favoritos.json")
+ARCHIVO_HISTORIAL = os.path.join(BASE_DIR, "historial.json")
+
+MAX_HISTORIAL = 500  # límite de entradas guardadas en historial.json
 
 # ============ CONSTANTES ============
 
@@ -299,6 +309,67 @@ def copiar_ruta_al_portapapeles(ruta):
         messagebox.showerror("Error", f"No se pudo copiar:\n{str(e)}")
 
 
+# ============ PERSISTENCIA: FAVORITOS E HISTORIAL ============
+
+def _cargar_json(archivo, defecto):
+    try:
+        if os.path.exists(archivo):
+            with open(archivo, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return defecto
+
+
+def _guardar_json(archivo, datos):
+    try:
+        with open(archivo, "w", encoding="utf-8") as f:
+            json.dump(datos, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        messagebox.showerror("Error", f"No se pudo guardar:\n{archivo}\n\n{e}")
+        return False
+
+
+def cargar_favoritos():
+    return _cargar_json(ARCHIVO_FAVORITOS, [])
+
+
+def guardar_favoritos(favs):
+    return _guardar_json(ARCHIVO_FAVORITOS, favs)
+
+
+def cargar_historial():
+    return _cargar_json(ARCHIVO_HISTORIAL, [])
+
+
+def guardar_historial(hist):
+    return _guardar_json(ARCHIVO_HISTORIAL, hist)
+
+
+def agregar_al_historial(termino, tipo, directorio, num_resultados):
+    """Añade una entrada al historial. Cada entrada lleva fecha y hora."""
+    hist = cargar_historial()
+    hist.append({
+        "termino": termino,
+        "tipo": tipo,
+        "directorio": directorio,
+        "resultados": num_resultados,
+        "fecha": datetime.now().strftime("%Y-%m-%d"),
+        "hora": datetime.now().strftime("%H:%M:%S"),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+    })
+    # Recortar si excede el máximo
+    if len(hist) > MAX_HISTORIAL:
+        hist = hist[-MAX_HISTORIAL:]
+    guardar_historial(hist)
+
+
+def historial_de_hoy():
+    hoy = date.today().strftime("%Y-%m-%d")
+    return [h for h in cargar_historial() if h.get("fecha") == hoy]
+
+
 # ============ VARIABLES GLOBALES ============
 
 ventana = None
@@ -328,6 +399,9 @@ panel_avanzado_visible = False
 extensiones_seleccionadas = set()   # ej: {".txt", ".py"}
 filtro_extensiones_activo = False
 _vars_extensiones = {}              # ext -> tk.BooleanVar
+
+# Referencia al popup de acciones abierto (para cerrarlo si se abre otro)
+_popup_acciones_actual = None
 
 
 # ============ UTILIDADES DE UI ============
@@ -380,6 +454,187 @@ def _cerrar_toast(toast):
         pass
 
 
+# ============ POPUP DE ACCIONES (BOTÓN ⋮) ============
+
+def _cerrar_popup_acciones(_event=None):
+    """Cierra el popup de acciones si está abierto."""
+    global _popup_acciones_actual
+    if _popup_acciones_actual is not None:
+        try:
+            _popup_acciones_actual.destroy()
+        except Exception:
+            pass
+        _popup_acciones_actual = None
+
+
+def abrir_popup_acciones(ruta, es_archivo, lbl_fav, widget_ancla):
+    """
+    Abre una ventana flotante pequeña con las acciones para una ruta.
+    Se cierra al pulsar una acción, al hacer clic fuera o con Escape.
+
+    Lógica de botones:
+      - Archivo   → Abrir archivo / Abrir carpeta contenedora / Copiar / Fav / Info
+      - Carpeta   → Abrir carpeta   / Copiar / Fav / Info
+    """
+    global _popup_acciones_actual
+
+    # Si ya hay un popup abierto, lo cerramos primero
+    _cerrar_popup_acciones()
+
+    nombre = os.path.basename(ruta)
+    icono, color = obtener_icono_y_color(ruta, es_archivo)
+    ya_fav = es_favorito(ruta)
+
+    popup = ctk.CTkToplevel(ventana)
+    popup.overrideredirect(True)
+    popup.attributes("-topmost", True)
+    popup.configure(fg_color=COLOR_FONDO_2)
+    _popup_acciones_actual = popup
+
+    # Marco con borde de color según tipo
+    marco = ctk.CTkFrame(popup,
+                         fg_color=COLOR_FONDO_2,
+                         border_color=color,
+                         border_width=2,
+                         corner_radius=14)
+    marco.pack(fill="both", expand=True, padx=1, pady=1)
+
+    # ---- Cabecera con icono + nombre ----
+    cab = ctk.CTkFrame(marco, fg_color="transparent")
+    cab.pack(fill="x", padx=14, pady=(12, 6))
+
+    ctk.CTkLabel(cab,
+                 text=f"{icono}",
+                 font=("Segoe UI", 18, "bold"),
+                 text_color=color,
+                 width=28).pack(side="left")
+
+    ctk.CTkLabel(cab,
+                 text=nombre,
+                 font=("Segoe UI", 13, "bold"),
+                 text_color=color,
+                 anchor="w",
+                 wraplength=300,
+                 justify="left").pack(side="left", fill="x", expand=True, padx=(6, 0))
+
+    # ---- Ruta completa (pequeña, gris) ----
+    ctk.CTkLabel(marco,
+                 text=ruta,
+                 font=("Segoe UI", 9),
+                 text_color=COLOR_TEXTO_SUAVE,
+                 anchor="w",
+                 wraplength=340,
+                 justify="left").pack(fill="x", padx=14, pady=(0, 10))
+
+    # ---- Separador ----
+    sep = ctk.CTkFrame(marco, height=1, fg_color=COLOR_BORDE)
+    sep.pack(fill="x", padx=10, pady=(0, 8))
+
+    # ---- Botones de acción ----
+    def _accion_y_cerrar(fn):
+        def _wrapper():
+            _cerrar_popup_acciones()
+            fn()
+        return _wrapper
+
+    fila_botones = ctk.CTkFrame(marco, fg_color="transparent")
+    fila_botones.pack(fill="x", padx=10, pady=(0, 12))
+
+    def _crear_boton(texto, comando, fg, hover, text_color="#1e1e2e"):
+        return ctk.CTkButton(
+            fila_botones,
+            text=texto,
+            command=comando,
+            width=300, height=32,
+            corner_radius=8,
+            fg_color=fg,
+            hover_color=hover,
+            text_color=text_color,
+            font=("Segoe UI", 11, "bold"),
+            anchor="w")
+
+    # Abrir (solo si es archivo → "Abrir archivo" / "Abrir carpeta contenedora")
+    if es_archivo:
+        _crear_boton("🚀  Abrir archivo",
+                     _accion_y_cerrar(lambda: abrir_archivo(ruta)),
+                     COLOR_ACENTO, COLOR_ACENTO_HOVER).pack(pady=2)
+
+        _crear_boton("📁  Abrir carpeta contenedora",
+                     _accion_y_cerrar(lambda: abrir_carpeta_contenedora(ruta)),
+                     COLOR_FONDO_3, "#4a4c63", COLOR_TEXTO).pack(pady=2)
+
+    else:
+        # Es una carpeta: solo "Abrir carpeta"
+        _crear_boton("📂  Abrir carpeta",
+                     _accion_y_cerrar(lambda: abrir_archivo(ruta)),
+                     COLOR_ACENTO, COLOR_ACENTO_HOVER).pack(pady=2)
+
+    # Copiar ruta (siempre)
+    _crear_boton("📋  Copiar ruta",
+                 _accion_y_cerrar(lambda: copiar_ruta_al_portapapeles(ruta)),
+                 COLOR_FONDO_3, "#4a4c63", COLOR_TEXTO).pack(pady=2)
+
+    # Favorito (toggle, siempre)
+    texto_fav = "💔  Quitar de favoritos" if ya_fav else "⭐  Añadir a favoritos"
+
+    def _toggle_fav():
+        toggle_favorito_ruta(ruta, lbl_fav)
+        try:
+            lbl_fav.configure(
+                text="⭐" if es_favorito(ruta) else "☆",
+                text_color=(COLOR_AMARILLO if es_favorito(ruta)
+                            else COLOR_BORDE))
+        except Exception:
+            pass
+
+    _crear_boton(texto_fav,
+                 _accion_y_cerrar(_toggle_fav),
+                 COLOR_AMARILLO, "#f5d78a").pack(pady=2)
+
+    # Información (siempre)
+    _crear_boton("ℹ️  Información",
+                 _accion_y_cerrar(lambda: mostrar_info(ruta)),
+                 COLOR_MORADO, "#b18ef0").pack(pady=2)
+
+    # ---- Posicionamiento junto al widget ancla ----
+    popup.update_idletasks()
+    ancho = 380
+    alto = popup.winfo_reqheight()
+    if alto < 200:
+        alto = 320
+
+    x = widget_ancla.winfo_rootx() + widget_ancla.winfo_width() - ancho
+    y = widget_ancla.winfo_rooty() + widget_ancla.winfo_height() + 4
+
+    # Si se sale de la pantalla por abajo, abre arriba del ancla
+    if y + alto > ventana.winfo_screenheight() - 10:
+        y = widget_ancla.winfo_rooty() - alto - 4
+    if x < 10:
+        x = 10
+
+    popup.geometry(f"{ancho}x{alto}+{x}+{y}")
+
+    # ---- Cierre al hacer clic fuera o Escape ----
+    def _on_click_outside(event):
+        try:
+            if event.widget.winfo_toplevel() != popup:
+                _cerrar_popup_acciones()
+        except Exception:
+            _cerrar_popup_acciones()
+
+    ventana.bind("<Button-1>", _on_click_outside, add="+")
+    popup.bind("<Escape>", lambda e: _cerrar_popup_acciones())
+
+    popup.focus_force()
+
+    def _on_destroy(_e=None):
+        global _popup_acciones_actual
+        if _popup_acciones_actual == popup:
+            _popup_acciones_actual = None
+
+    popup.bind("<Destroy>", _on_destroy)
+
+
 # ============ FUNCIONES DE TKINTER ============
 
 def centrar_ventana():
@@ -410,11 +665,6 @@ def seleccionar_directorio():
 
 
 def seleccionar_todos_los_discos():
-    """
-    Activa el modo 'Todos los discos'.
-    OJO: solo cambiamos el texto del entry, NO dir_busqueda.
-    El estado real vive en modo_todos_discos.
-    """
     global modo_todos_discos
     modo_todos_discos = True
     unidades = obtener_unidades()
@@ -425,10 +675,6 @@ def seleccionar_todos_los_discos():
 
 
 def _on_dir_escrito(event=None):
-    """
-    Si el usuario escribe manualmente en el campo de directorio,
-    desactivamos el modo 'todos los discos' y sincronizamos dir_busqueda.
-    """
     global modo_todos_discos
     teclas_ignoradas = {"Left", "Right", "Up", "Down", "Home", "End",
                         "Shift_L", "Shift_R", "Control_L", "Control_R"}
@@ -445,6 +691,10 @@ def limpiar_resultados():
 
 
 def mostrar_resultado(ruta, es_archivo):
+    """
+    Muestra una tarjeta de resultado SIN botones visibles.
+    La interacción se hace con el botón ⋮ que abre un popup flotante.
+    """
     nombre = os.path.basename(ruta)
     icono, color = obtener_icono_y_color(ruta, es_archivo)
 
@@ -456,15 +706,36 @@ def mostrar_resultado(ruta, es_archivo):
     card.pack(fill="x", pady=4, padx=4)
 
     inner = ctk.CTkFrame(card, fg_color="transparent")
-    inner.pack(fill="x", padx=10, pady=8)
+    inner.pack(fill="x", padx=12, pady=10)
 
+    ya_fav = es_favorito(ruta)
+    texto = f"{icono}  {nombre}"
     label_nombre = ctk.CTkLabel(inner,
-                                text=f"{icono}  {nombre}",
+                                text=texto,
                                 text_color=color,
                                 font=("Segoe UI", 13, "bold"),
                                 anchor="w")
     label_nombre.pack(side="left", fill="x", expand=True)
 
+    lbl_fav = ctk.CTkLabel(inner,
+                           text="⭐" if ya_fav else "☆",
+                           font=("Segoe UI", 14, "bold"),
+                           text_color=COLOR_AMARILLO if ya_fav else COLOR_BORDE)
+    lbl_fav.pack(side="right", padx=(6, 0))
+
+    btn_menu = ctk.CTkButton(inner, text="⋮",
+                             width=32, height=28,
+                             corner_radius=8,
+                             fg_color=COLOR_FONDO_3,
+                             hover_color=COLOR_ACENTO,
+                             text_color=COLOR_TEXTO,
+                             font=("Segoe UI", 13, "bold"))
+    btn_menu.pack(side="right")
+
+    btn_menu.configure(
+        command=lambda: abrir_popup_acciones(ruta, es_archivo, lbl_fav, btn_menu))
+
+    # ---- tooltip con la ruta completa (solo hover) ----
     def mostrar_tooltip(event):
         tooltip = tk.Toplevel(card)
         tooltip.wm_overrideredirect(True)
@@ -478,36 +749,14 @@ def mostrar_resultado(ruta, es_archivo):
 
     def ocultar_tooltip(event):
         if hasattr(card, 'tooltip'):
-            card.tooltip.destroy()
+            try:
+                card.tooltip.destroy()
+            except Exception:
+                pass
 
-    label_nombre.bind("<Enter>", mostrar_tooltip)
-    label_nombre.bind("<Leave>", ocultar_tooltip)
-
-    btn_container = ctk.CTkFrame(inner, fg_color="transparent")
-    btn_container.pack(side="right")
-
-    def crear_boton(texto, comando, color_hover=COLOR_ACENTO_HOVER):
-        return ctk.CTkButton(btn_container,
-                             text=texto,
-                             command=comando,
-                             width=90, height=28,
-                             corner_radius=8,
-                             fg_color=COLOR_ACENTO,
-                             hover_color=color_hover,
-                             text_color="#1e1e2e",
-                             font=("Segoe UI", 10, "bold"))
-
-    btn_abrir = crear_boton("🚀 Abrir", lambda: abrir_archivo(ruta))
-    btn_abrir.pack(side="left", padx=3)
-
-    btn_carpeta = crear_boton("📂 Carpeta", lambda: abrir_carpeta_contenedora(ruta))
-    btn_carpeta.pack(side="left", padx=3)
-
-    btn_copiar = crear_boton("📋 Copiar", lambda: copiar_ruta_al_portapapeles(ruta))
-    btn_copiar.pack(side="left", padx=3)
-
-    btn_info = crear_boton("ℹ️ Info", lambda: mostrar_info(ruta), COLOR_MORADO)
-    btn_info.pack(side="left", padx=3)
+    for w in (card, inner, label_nombre, lbl_fav):
+        w.bind("<Enter>", mostrar_tooltip)
+        w.bind("<Leave>", ocultar_tooltip)
 
 
 def mostrar_info(ruta):
@@ -532,6 +781,416 @@ def mostrar_info(ruta):
     messagebox.showinfo(f"Información: {nombre}", info)
 
 
+# ============ FAVORITOS ============
+
+def es_favorito(ruta):
+    """Devuelve True si la ruta ya está guardada como favorita (tipo ruta)."""
+    for fav in cargar_favoritos():
+        if fav.get("tipo") == "ruta" and fav.get("valor") == ruta:
+            return True
+    return False
+
+
+def toggle_favorito_ruta(ruta, etiqueta_estrella=None):
+    """Añade o quita una ruta de los favoritos."""
+    favs = cargar_favoritos()
+    existente = None
+    for f in favs:
+        if f.get("tipo") == "ruta" and f.get("valor") == ruta:
+            existente = f
+            break
+
+    if existente:
+        favs.remove(existente)
+        guardar_favoritos(favs)
+        if etiqueta_estrella is not None:
+            try:
+                etiqueta_estrella.configure(text="☆", text_color=COLOR_BORDE)
+            except Exception:
+                pass
+        mostrar_toast("💔 Quitado de favoritos", COLOR_ROJO)
+    else:
+        favs.append({
+            "tipo": "ruta",
+            "valor": ruta,
+            "nombre": os.path.basename(ruta) or ruta,
+            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        })
+        guardar_favoritos(favs)
+        if etiqueta_estrella is not None:
+            try:
+                etiqueta_estrella.configure(text="⭐", text_color=COLOR_AMARILLO)
+            except Exception:
+                pass
+        mostrar_toast("⭐ Guardado en favoritos", COLOR_AMARILLO)
+
+
+def guardar_busqueda_favorita():
+    """Guarda la búsqueda actual (término + tipo + directorio) como favorita."""
+    termino = entry_busqueda.get().strip()
+    if not termino:
+        mostrar_toast("⚠️ Escribe un término antes de guardar", COLOR_AMARILLO)
+        return
+
+    favs = cargar_favoritos()
+    directorio = ("__TODOS_LOS_DISCOS__" if modo_todos_discos
+                  else dir_busqueda.get().strip() or os.path.expanduser("~"))
+    tipo = tipo_busqueda.get()
+
+    for f in favs:
+        if (f.get("tipo") == "busqueda" and f.get("termino") == termino
+                and f.get("directorio") == directorio
+                and f.get("tipo_busqueda") == tipo):
+            mostrar_toast("ℹ️ Esa búsqueda ya está en favoritos", COLOR_ACENTO)
+            return
+
+    favs.append({
+        "tipo": "busqueda",
+        "termino": termino,
+        "directorio": directorio,
+        "tipo_busqueda": tipo,
+        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    })
+    guardar_favoritos(favs)
+    mostrar_toast("⭐ Búsqueda guardada en favoritos", COLOR_AMARILLO)
+
+
+def agregar_favorito_desde_explorador(tipo="carpeta"):
+    """
+    Abre el explorador del sistema para elegir una carpeta o archivo
+    y lo añade como favorito.
+    """
+    if tipo == "carpeta":
+        ruta = filedialog.askdirectory(title="Seleccionar carpeta favorita")
+    else:
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar archivo favorito",
+            filetypes=[("Todos los archivos", "*.*")])
+
+    if not ruta:
+        return
+
+    if es_favorito(ruta):
+        mostrar_toast("ℹ️ Esa ruta ya está en favoritos", COLOR_ACENTO)
+        return
+
+    favs = cargar_favoritos()
+    favs.append({
+        "tipo": "ruta",
+        "valor": ruta,
+        "nombre": os.path.basename(ruta) or ruta,
+        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    })
+    guardar_favoritos(favs)
+    mostrar_toast("⭐ Añadido a favoritos", COLOR_AMARILLO)
+
+
+def eliminar_favorito(indice):
+    favs = cargar_favoritos()
+    if 0 <= indice < len(favs):
+        favs.pop(indice)
+        guardar_favoritos(favs)
+        mostrar_toast("🗑️ Favorito eliminado", COLOR_ROJO)
+
+
+def aplicar_favorito_busqueda(fav):
+    """Rellena la UI con los datos de una búsqueda favorita y la lanza."""
+    global modo_todos_discos
+    entry_busqueda.delete(0, "end")
+    entry_busqueda.insert(0, fav.get("termino", ""))
+    tipo_busqueda.set(fav.get("tipo_busqueda", "ambos"))
+
+    directorio = fav.get("directorio", "")
+    if directorio == "__TODOS_LOS_DISCOS__":
+        seleccionar_todos_los_discos()
+    else:
+        modo_todos_discos = False
+        entry_dir.delete(0, "end")
+        entry_dir.insert(0, directorio)
+        dir_busqueda.set(directorio)
+
+    iniciar_busqueda()
+
+
+# ============ VENTANAS DE FAVORITOS E HISTORIAL ============
+
+def _crear_ventana_flotante(titulo, ancho=720, alto=560, color_titulo=COLOR_AMARILLO):
+    win = ctk.CTkToplevel(ventana)
+    win.title(titulo)
+    win.geometry(f"{ancho}x{alto}")
+    win.minsize(560, 400)
+    win.configure(fg_color=COLOR_FONDO)
+    win.transient(ventana)
+    win.grab_set()
+
+    cab = ctk.CTkFrame(win, fg_color=COLOR_FONDO_2, corner_radius=0)
+    cab.pack(fill="x")
+    ctk.CTkLabel(cab, text=titulo,
+                 font=("Segoe UI", 18, "bold"),
+                 text_color=color_titulo).pack(side="left", padx=18, pady=12)
+    ctk.CTkButton(cab, text="✖ Cerrar",
+                  command=win.destroy,
+                  width=90, height=32,
+                  fg_color=COLOR_ROJO, hover_color="#e07191",
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 11, "bold")).pack(side="right", padx=12)
+
+    cont = ctk.CTkScrollableFrame(win, fg_color=COLOR_FONDO,
+                                  corner_radius=0)
+    cont.pack(fill="both", expand=True, padx=14, pady=14)
+    return win, cont
+
+
+def abrir_panel_favoritos():
+    win, cont = _crear_ventana_flotante("⭐ Favoritos", color_titulo=COLOR_AMARILLO)
+
+    # --- Acciones ---
+    acciones = ctk.CTkFrame(cont, fg_color=COLOR_FONDO_2, corner_radius=12)
+    acciones.pack(fill="x", pady=(0, 12))
+
+    ctk.CTkLabel(acciones, text="Acciones rápidas",
+                 font=("Segoe UI", 12, "bold"),
+                 text_color=COLOR_TEXTO_SUAVE).pack(anchor="w", padx=14, pady=(12, 6))
+
+    fila_btn = ctk.CTkFrame(acciones, fg_color="transparent")
+    fila_btn.pack(fill="x", padx=14, pady=(0, 14))
+
+    ctk.CTkButton(fila_btn, text="⭐ Guardar búsqueda actual",
+                  command=guardar_busqueda_favorita,
+                  width=200, height=34,
+                  fg_color=COLOR_AMARILLO, hover_color="#f5d78a",
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 8))
+
+    ctk.CTkButton(fila_btn, text="📁 Añadir carpeta favorita",
+                  command=lambda: (agregar_favorito_desde_explorador("carpeta"),
+                                   win.destroy(), abrir_panel_favoritos()),
+                  width=200, height=34,
+                  fg_color=COLOR_ACENTO, hover_color=COLOR_ACENTO_HOVER,
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 8))
+
+    ctk.CTkButton(fila_btn, text="📄 Añadir archivo favorito",
+                  command=lambda: (agregar_favorito_desde_explorador("archivo"),
+                                   win.destroy(), abrir_panel_favoritos()),
+                  width=200, height=34,
+                  fg_color=COLOR_VERDE, hover_color="#8ed189",
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 11, "bold")).pack(side="left")
+
+    # --- Lista ---
+    favs = cargar_favoritos()
+    if not favs:
+        ctk.CTkLabel(cont, text="Aún no tienes favoritos guardados.\n"
+                                "Usa los botones de arriba, o el botón ⋮ de un resultado.",
+                     font=("Segoe UI", 12),
+                     text_color=COLOR_TEXTO_SUAVE,
+                     justify="left").pack(anchor="w", padx=8, pady=20)
+        return
+
+    for i, fav in enumerate(favs):
+        tipo = fav.get("tipo")
+        card = ctk.CTkFrame(cont, fg_color=COLOR_FONDO_2, corner_radius=10,
+                            border_width=1, border_color=COLOR_BORDE)
+        card.pack(fill="x", pady=4, padx=4)
+
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="x", padx=12, pady=10)
+
+        if tipo == "busqueda":
+            titulo = f"🔎  {fav.get('termino', '')}"
+            dir_txt = fav.get("directorio", "")
+            if dir_txt == "__TODOS_LOS_DISCOS__":
+                dir_txt = "💽 Todos los discos"
+            subt = f"📁 {dir_txt}   •   🎯 {fav.get('tipo_busqueda', 'ambos')}"
+            ctk.CTkLabel(inner, text=titulo,
+                         font=("Segoe UI", 13, "bold"),
+                         text_color=COLOR_ACENTO,
+                         anchor="w").pack(anchor="w")
+            ctk.CTkLabel(inner, text=subt,
+                         font=("Segoe UI", 11),
+                         text_color=COLOR_TEXTO_SUAVE,
+                         anchor="w").pack(anchor="w")
+
+            botones = ctk.CTkFrame(inner, fg_color="transparent")
+            botones.pack(anchor="e")
+            ctk.CTkButton(botones, text="🔁 Buscar",
+                          command=lambda f=fav: (win.destroy(), aplicar_favorito_busqueda(f)),
+                          width=100, height=28,
+                          fg_color=COLOR_ACENTO, hover_color=COLOR_ACENTO_HOVER,
+                          text_color="#1e1e2e",
+                          font=("Segoe UI", 11, "bold")).pack(side="left", padx=3)
+            ctk.CTkButton(botones, text="🗑️",
+                          command=lambda idx=i: (eliminar_favorito(idx), win.destroy(), abrir_panel_favoritos()),
+                          width=40, height=28,
+                          fg_color=COLOR_ROJO, hover_color="#e07191",
+                          text_color="#1e1e2e",
+                          font=("Segoe UI", 11, "bold")).pack(side="left", padx=3)
+
+        elif tipo == "ruta":
+            ruta = fav.get("valor", "")
+            nombre = fav.get("nombre", os.path.basename(ruta))
+
+            # ¿Existe y es archivo o carpeta? Si no existe, lo tratamos como archivo
+            if os.path.exists(ruta):
+                es_archivo = os.path.isfile(ruta)
+            else:
+                # Fallback: si la ruta no existe, no sabemos. Mostramos como archivo
+                # (los botones siguen funcionando en el sentido de "abrir").
+                es_archivo = True
+
+            icono, color = obtener_icono_y_color(ruta, es_archivo)
+            ctk.CTkLabel(inner, text=f"{icono}  {nombre}",
+                         font=("Segoe UI", 13, "bold"),
+                         text_color=color,
+                         anchor="w").pack(anchor="w")
+            ctk.CTkLabel(inner, text=ruta,
+                         font=("Segoe UI", 10),
+                         text_color=COLOR_TEXTO_SUAVE,
+                         anchor="w").pack(anchor="w")
+
+            botones = ctk.CTkFrame(inner, fg_color="transparent")
+            botones.pack(anchor="e")
+
+            # Archivo → Abrir + Carpeta contenedora
+            # Carpeta → Abrir carpeta (un único botón)
+            if es_archivo:
+                ctk.CTkButton(botones, text="🚀 Abrir",
+                              command=lambda r=ruta: abrir_archivo(r),
+                              width=90, height=28,
+                              fg_color=COLOR_ACENTO, hover_color=COLOR_ACENTO_HOVER,
+                              text_color="#1e1e2e",
+                              font=("Segoe UI", 11, "bold")).pack(side="left", padx=3)
+                ctk.CTkButton(botones, text="📁 Carpeta contenedora",
+                              command=lambda r=ruta: abrir_carpeta_contenedora(r),
+                              width=150, height=28,
+                              fg_color=COLOR_VERDE, hover_color="#8ed189",
+                              text_color="#1e1e2e",
+                              font=("Segoe UI", 11, "bold")).pack(side="left", padx=3)
+            else:
+                ctk.CTkButton(botones, text="📂 Abrir carpeta",
+                              command=lambda r=ruta: abrir_archivo(r),
+                              width=130, height=28,
+                              fg_color=COLOR_ACENTO, hover_color=COLOR_ACENTO_HOVER,
+                              text_color="#1e1e2e",
+                              font=("Segoe UI", 11, "bold")).pack(side="left", padx=3)
+
+            ctk.CTkButton(botones, text="🗑️",
+                          command=lambda idx=i: (eliminar_favorito(idx), win.destroy(), abrir_panel_favoritos()),
+                          width=40, height=28,
+                          fg_color=COLOR_ROJO, hover_color="#e07191",
+                          text_color="#1e1e2e",
+                          font=("Segoe UI", 11, "bold")).pack(side="left", padx=3)
+
+
+def borrar_historial():
+    """Borra el historial (con confirmación). Pregunta si borrar todo o solo hoy."""
+    resp = messagebox.askyesnocancel(
+        "Borrar historial",
+        "¿Quieres borrar TODO el historial?\n\n"
+        "Sí  → borrar todo el historial\n"
+        "No  → borrar solo el de HOY\n"
+        "Cancelar → no hacer nada")
+
+    if resp is None:
+        return
+    if resp:
+        guardar_historial([])
+        mostrar_toast("🗑️ Historial completo borrado", COLOR_ROJO)
+    else:
+        hoy = date.today().strftime("%Y-%m-%d")
+        hist = [h for h in cargar_historial() if h.get("fecha") != hoy]
+        guardar_historial(hist)
+        mostrar_toast("🗑️ Historial de hoy borrado", COLOR_ROJO)
+
+
+def abrir_panel_historial():
+    win, cont = _crear_ventana_flotante("🕘 Historial de hoy", color_titulo=COLOR_MORADO)
+
+    # --- Acciones ---
+    acciones = ctk.CTkFrame(cont, fg_color=COLOR_FONDO_2, corner_radius=12)
+    acciones.pack(fill="x", pady=(0, 12))
+
+    ctk.CTkLabel(acciones, text="Acciones",
+                 font=("Segoe UI", 12, "bold"),
+                 text_color=COLOR_TEXTO_SUAVE).pack(anchor="w", padx=14, pady=(12, 6))
+
+    ctk.CTkButton(acciones, text="🗑️ Borrar historial",
+                  command=lambda: (borrar_historial(), win.destroy(),
+                                   abrir_panel_historial()),
+                  width=200, height=34,
+                  fg_color=COLOR_ROJO, hover_color="#e07191",
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=14, pady=(0, 14))
+
+    hist_hoy = historial_de_hoy()
+    hist_hoy.reverse()  # más reciente primero
+
+    if not hist_hoy:
+        ctk.CTkLabel(cont,
+                     text="No hay búsquedas registradas hoy.\n"
+                          "Cada búsqueda que realices se guardará aquí automáticamente.",
+                     font=("Segoe UI", 12),
+                     text_color=COLOR_TEXTO_SUAVE,
+                     justify="left").pack(anchor="w", padx=8, pady=20)
+        return
+
+    ctk.CTkLabel(cont,
+                 text=f"Se muestran las {len(hist_hoy)} búsquedas de hoy:",
+                 font=("Segoe UI", 12, "bold"),
+                 text_color=COLOR_TEXTO_SUAVE).pack(anchor="w", padx=8, pady=(0, 8))
+
+    for h in hist_hoy:
+        card = ctk.CTkFrame(cont, fg_color=COLOR_FONDO_2, corner_radius=10,
+                            border_width=1, border_color=COLOR_BORDE)
+        card.pack(fill="x", pady=4, padx=4)
+
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="x", padx=12, pady=10)
+
+        ctk.CTkLabel(inner,
+                     text=f"🕐 {h.get('hora', '--:--:--')}   •   🔎 {h.get('termino', '')}",
+                     font=("Segoe UI", 13, "bold"),
+                     text_color=COLOR_ACENTO,
+                     anchor="w").pack(anchor="w")
+
+        dir_txt = h.get("directorio", "")
+        if dir_txt == "__TODOS_LOS_DISCOS__":
+            dir_txt = "💽 Todos los discos"
+        ctk.CTkLabel(inner,
+                     text=f"📁 {dir_txt}   •   🎯 {h.get('tipo', 'ambos')}   •   "
+                          f"📊 {h.get('resultados', 0)} resultados",
+                     font=("Segoe UI", 11),
+                     text_color=COLOR_TEXTO_SUAVE,
+                     anchor="w").pack(anchor="w")
+
+        ctk.CTkButton(inner, text="🔁 Repetir búsqueda",
+                      command=lambda e=h: (win.destroy(), aplicar_historial(e)),
+                      width=160, height=28,
+                      fg_color=COLOR_MORADO, hover_color="#b18ef0",
+                      text_color="#1e1e2e",
+                      font=("Segoe UI", 11, "bold")).pack(anchor="e", pady=(4, 0))
+
+
+def aplicar_historial(entrada):
+    """Reaplica una búsqueda guardada en el historial."""
+    global modo_todos_discos
+    entry_busqueda.delete(0, "end")
+    entry_busqueda.insert(0, entrada.get("termino", ""))
+    tipo_busqueda.set(entrada.get("tipo", "ambos"))
+
+    directorio = entrada.get("directorio", "")
+    if directorio == "__TODOS_LOS_DISCOS__":
+        seleccionar_todos_los_discos()
+    else:
+        modo_todos_discos = False
+        entry_dir.delete(0, "end")
+        entry_dir.insert(0, directorio)
+        dir_busqueda.set(directorio)
+
+    iniciar_busqueda()
+
+
 # ============ PANEL AVANZADO (FILTRO DE EXTENSIONES) ============
 
 def _pasa_filtro_extension(ruta, es_archivo):
@@ -539,7 +1198,6 @@ def _pasa_filtro_extension(ruta, es_archivo):
     if not filtro_extensiones_activo:
         return True
     if not es_archivo:
-        # Las carpetas siempre pasan (no tienen extensión)
         return True
     ext = os.path.splitext(ruta)[1].lower()
     return ext in extensiones_seleccionadas
@@ -607,7 +1265,6 @@ def toggle_panel_avanzado():
     panel_avanzado_visible = True
     if btn_avanzado is not None:
         btn_avanzado.configure(fg_color=COLOR_ACENTO)
-    # Lo colocamos justo debajo del bloque de opciones
     panel_avanzado.pack(fill="x", padx=24, pady=(0, 12), after=opciones)
 
 
@@ -617,7 +1274,6 @@ def crear_panel_avanzado(parent):
 
     panel = ctk.CTkFrame(parent, fg_color=COLOR_FONDO_2, corner_radius=14)
 
-    # Cabecera del panel
     cab = ctk.CTkFrame(panel, fg_color="transparent")
     cab.pack(fill="x", padx=14, pady=(12, 4))
 
@@ -630,7 +1286,6 @@ def crear_panel_avanzado(parent):
                                        text_color=COLOR_TEXTO_SUAVE)
     label_filtro_estado.pack(side="right")
 
-    # Botones globales
     botones_globales = ctk.CTkFrame(panel, fg_color="transparent")
     botones_globales.pack(fill="x", padx=14, pady=(0, 8))
 
@@ -641,19 +1296,16 @@ def crear_panel_avanzado(parent):
                   text_color="#1e1e2e",
                   font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 6))
 
-    # Contenedor scrollable para las categorías
     scroll_frame = ctk.CTkScrollableFrame(panel, height=220,
                                           fg_color=COLOR_FONDO_3,
                                           corner_radius=10)
     scroll_frame.pack(fill="x", padx=14, pady=(0, 12))
 
-    # Cada categoría como tarjeta
     for categoria, datos in TIPOS_ARCHIVO.items():
         cat_frame = ctk.CTkFrame(scroll_frame, fg_color=COLOR_FONDO_2,
                                  corner_radius=8)
         cat_frame.pack(fill="x", pady=3, padx=2)
 
-        # Cabecera de categoría
         cab_cat = ctk.CTkFrame(cat_frame, fg_color="transparent")
         cab_cat.pack(fill="x", padx=8, pady=(6, 2))
 
@@ -675,7 +1327,6 @@ def crear_panel_avanzado(parent):
                       text_color=COLOR_TEXTO,
                       font=("Segoe UI", 10, "bold")).pack(side="right")
 
-        # Grid de checkboxes (varias columnas)
         grid = ctk.CTkFrame(cat_frame, fg_color="transparent")
         grid.pack(fill="x", padx=8, pady=(0, 8))
 
@@ -722,12 +1373,14 @@ def iniciar_busqueda():
         if not directorios:
             mostrar_toast("❌ No se detectaron discos", COLOR_ROJO)
             return
+        directorio_hist = "__TODOS_LOS_DISCOS__"
     else:
         directorio = dir_busqueda.get().strip()
         if not directorio or not os.path.exists(directorio):
             mostrar_toast("❌ El directorio no existe", COLOR_ROJO)
             return
         directorios = [directorio]
+        directorio_hist = directorio
 
     limpiar_resultados()
 
@@ -742,12 +1395,14 @@ def iniciar_busqueda():
 
     busqueda_activa = True
     hilo = Thread(target=ejecutar_busqueda,
-                  args=(directorios, texto_buscar, tipo, max_res),
+                  args=(directorios, texto_buscar, tipo, max_res,
+                        directorio_hist),
                   daemon=True)
     hilo.start()
 
 
-def ejecutar_busqueda(directorios, patron, tipo, max_resultados):
+def ejecutar_busqueda(directorios, patron, tipo, max_resultados,
+                      directorio_hist):
     try:
         resultados = []
         inicio = time.time()
@@ -785,6 +1440,11 @@ def ejecutar_busqueda(directorios, patron, tipo, max_resultados):
 
         tiempo_total = time.time() - inicio
 
+        try:
+            agregar_al_historial(patron, tipo, directorio_hist, len(resultados))
+        except Exception:
+            pass
+
         ventana.after(0, mostrar_resultados_en_gui,
                       resultados, tiempo_total, patron)
     except Exception as e:
@@ -810,7 +1470,6 @@ def mostrar_resultados_en_gui(resultados, tiempo, patron):
             continue
         es_archivo = os.path.isfile(ruta)
 
-        # Aplicar filtro de extensiones (solo afecta archivos)
         if not _pasa_filtro_extension(ruta, es_archivo):
             continue
 
@@ -878,7 +1537,6 @@ def crear_interfaz():
     ventana.minsize(760, 560)
     ventana.configure(fg_color=COLOR_FONDO)
 
-    # Icono
     try:
         icono1 = Image.open("./img/icono1.png")
         icono_ventana = ImageTk.PhotoImage(icono1)
@@ -900,7 +1558,6 @@ def crear_interfaz():
                  font=("Segoe UI", 12),
                  text_color=COLOR_TEXTO_SUAVE).pack(side="left", padx=14, pady=(8, 0))
 
-    # Botón Avanzado arriba a la derecha
     btn_avanzado = ctk.CTkButton(header,
                                  text="⚙️ Avanzado",
                                  command=toggle_panel_avanzado,
@@ -911,6 +1568,26 @@ def crear_interfaz():
                                  text_color="#1e1e2e",
                                  font=("Segoe UI", 12, "bold"))
     btn_avanzado.pack(side="right")
+
+    ctk.CTkButton(header,
+                  text="⭐ Favoritos",
+                  command=abrir_panel_favoritos,
+                  width=130, height=36,
+                  corner_radius=10,
+                  fg_color=COLOR_AMARILLO,
+                  hover_color="#f5d78a",
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 12, "bold")).pack(side="right", padx=(0, 8))
+
+    ctk.CTkButton(header,
+                  text="🕘 Historial",
+                  command=abrir_panel_historial,
+                  width=130, height=36,
+                  corner_radius=10,
+                  fg_color=COLOR_MORADO,
+                  hover_color="#b18ef0",
+                  text_color="#1e1e2e",
+                  font=("Segoe UI", 12, "bold")).pack(side="right", padx=(0, 8))
 
     # ---------- BARRA DE BÚSQUEDA ----------
     barra = ctk.CTkFrame(ventana, fg_color=COLOR_FONDO_2, corner_radius=14)
@@ -957,7 +1634,6 @@ def crear_interfaz():
     opciones = ctk.CTkFrame(ventana, fg_color=COLOR_FONDO_2, corner_radius=14)
     opciones.pack(fill="x", padx=24, pady=(0, 12))
 
-    # Fila: Tipo
     fila_tipo = ctk.CTkFrame(opciones, fg_color="transparent")
     fila_tipo.pack(fill="x", padx=14, pady=(12, 4))
 
@@ -979,7 +1655,6 @@ def crear_interfaz():
                            text_color=COLOR_TEXTO,
                            font=("Segoe UI", 12)).pack(side="left", padx=8)
 
-    # Fila: Directorio
     fila_dir = ctk.CTkFrame(opciones, fg_color="transparent")
     fila_dir.pack(fill="x", padx=14, pady=6)
 
@@ -988,7 +1663,6 @@ def crear_interfaz():
                  text_color=COLOR_TEXTO_SUAVE,
                  width=90, anchor="w").pack(side="left")
 
-    # OJO: SIN textvariable. El texto mostrado y el estado real van separados.
     dir_busqueda = tk.StringVar(value=os.path.expanduser("~"))
 
     entry_dir = ctk.CTkEntry(fila_dir,
@@ -1022,7 +1696,6 @@ def crear_interfaz():
                   text_color="#1e1e2e",
                   font=("Segoe UI", 12, "bold")).pack(side="left", padx=(8, 0))
 
-    # Fila: Máx resultados
     fila_max = ctk.CTkFrame(opciones, fg_color="transparent")
     fila_max.pack(fill="x", padx=14, pady=(4, 12))
 
@@ -1031,7 +1704,7 @@ def crear_interfaz():
                  text_color=COLOR_TEXTO_SUAVE,
                  width=120, anchor="w").pack(side="left")
 
-    max_resultados_var = tk.StringVar(value="")
+    max_resultados_var = tk.StringVar(value="500")
     entry_max = ctk.CTkEntry(fila_max,
                              textvariable=max_resultados_var,
                              width=120, height=36,
@@ -1048,7 +1721,6 @@ def crear_interfaz():
                  font=("Segoe UI", 11),
                  text_color=COLOR_TEXTO_SUAVE).pack(side="left")
 
-    # ---------- PANEL AVANZADO (oculto hasta pulsar el botón) ----------
     crear_panel_avanzado(ventana)
 
     # ---------- ESTADO ----------
@@ -1072,8 +1744,8 @@ def crear_interfaz():
     resultados_frame.pack(fill="both", expand=True, padx=24, pady=(8, 20))
 
     ctk.CTkLabel(resultados_frame,
-                 text="  Resultados",
-                 font=("Segoe UI", 13, "bold"),
+                 text="  Resultados (usa el botón ⋮ para opciones)",
+                 font=("Segoe UI", 12, "bold"),
                  text_color=COLOR_TEXTO_SUAVE,
                  anchor="w").pack(fill="x", padx=12, pady=(10, 0))
 
@@ -1101,7 +1773,6 @@ def crear_interfaz():
     frame_resultados.bind("<Configure>", on_frame_configure)
     canvas_resultados.bind("<Configure>", on_canvas_configure)
 
-    # Atajos
     ventana.bind("<Control-f>", lambda e: entry_busqueda.focus())
     ventana.bind("<Control-F>", lambda e: entry_busqueda.focus())
 
